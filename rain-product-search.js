@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         Highlight catalog searches
+// @name         RainAdmin manufacturer search highlights
 // @namespace    http://tampermonkey.net/
 // @version      2026-06-03
 // @description  Highlights matches / mismatches when searching for products, as UPC mismatches are likely to override the scanned UPC and cause problems.
@@ -12,10 +12,11 @@
 (function() {
     'use strict';
 
+    // new UI:
     // #searchResultsModal pops up
     // #manufacturerSearchModal has the search input
     // .catalog-search-results-wrapper contains results
-    // <catalog-search-item> gets highlight
+    // <catalog-search-item> children get highlights, as they're visible
     /*
         <div class="catalog-search-product-mfr">
             <div class="info-label">MFR: </div>
@@ -34,59 +35,65 @@
             <div class="info-text ng-binding">31438-J</div>
         </div>
     */
+    // new and old are very similar, but the wrapping around items is different.
 
     // wait for page elements to load, then run.
-    // the new UI delays this a fair bit, so just wait.
-    // not yet sure what to do with the old UI, working on it.
-    const newUI = () => {
+    // new vs old UI are very similar, but the results container is different.
+    // the new UI is much easier/safer to identify.
+    const real = () => {
         let modal = document.getElementById("searchResultsModal");
         let query = modal.querySelector("input#manufacturerSearchModal"); // multiple share this ID in the page, need the one in the modal
-        let results = modal.querySelector(".catalog-search-results-wrapper");
-        console.log("loaded:", modal, query, results);
+        let newResults = modal.querySelector(".catalog-search-results-wrapper");
+        let oldResults = modal.querySelectorAll(".pagination-panel-body");
+        console.log("loaded:", modal, query, newResults, oldResults);
         const updateColors = (muts, obs) => {
-            console.log("results changed, searching for matching text");
-            results.querySelectorAll("catalog-search-item").forEach((c) => {
-                console.log("  got item:", c);
-                let found = false;
-                c.querySelectorAll(".info-text").forEach((e) => {
-                    console.log("    got text:", e.textContent, query.value);
-                    const matches = e.textContent.match("(.*)("+query.value+")(.*)");
-                    if (matches && matches.length == 4) {
-                        if (matches[1] == "" && matches[3] == "" ){
-                            // exact match
-                            found=true;
-                            e.parentElement.style.background="#8F8";
-                        } else {
-                            // partial match, dangerous.
-                            // TODO: ditch strings, make elements
-                            const span = (text)=>{
-                                let s = document.createElement("span");
-                                s.style.backgroundColor="#F88";
-                                s.innerText = text;
-                                return s;
+            try {
+                console.log("results changed, searching for matching text");
+                (newResults || oldResults[0]).querySelectorAll("catalog-search-item").forEach((c) => {
+                    console.log("  got item:", c);
+                    let found = false;
+                    c.querySelectorAll(".info-text").forEach((e) => {
+                        console.log("    got text:", e.textContent, query.value);
+                        const matches = e.textContent.match("(.*)("+query.value+")(.*)");
+                        if (matches && matches.length == 4) {
+                            if (matches[1] == "" && matches[3] == "" ){
+                                // exact match
+                                found=true;
+                                e.parentElement.style.background="#8F8";
+                            } else {
+                                // partial match, dangerous.
+                                // TODO: ditch strings, make elements
+                                const span = (text)=>{
+                                    let s = document.createElement("span");
+                                    s.style.backgroundColor="#F88";
+                                    s.innerText = text;
+                                    return s;
+                                }
+                                e.innerText = "";
+                                e.appendChild(span(matches[1]));
+                                e.appendChild(document.createTextNode(matches[2]));
+                                e.appendChild(span(matches[3]));
                             }
-                            e.innerText = "";
-                            e.appendChild(span(matches[1]));
-                            e.appendChild(document.createTextNode(matches[2]));
-                            e.appendChild(span(matches[3]));
                         }
-                    }
-                    // else ignore the field
-                    if (e.textContent == query.value) {
-                        found = true;
-                        e.parentElement.style.background="#8F8";
-                    } else if (query.value.match(e.textContent)) { // contains
-                        e.parentElement.style.background="#DD8";
+                        // else ignore the field
+                        if (e.textContent == query.value) {
+                            found = true;
+                            e.parentElement.style.background="#8F8";
+                        } else if (query.value.match(e.textContent)) { // contains
+                            e.parentElement.style.background="#DD8";
+                        }
+                    });
+                    if (found) {
+                        c.querySelector(".catalog-search-product-summary").style.background="#FFF";
+                        c.querySelector(".catalog-search-product-full").style.background="#FFF";
+                    } else {
+                        c.querySelector(".catalog-search-product-summary").style.background="#FDD";
+                        c.querySelector(".catalog-search-product-full").style.background="#FDD";
                     }
                 });
-                if (found) {
-                    c.querySelector(".catalog-search-product-summary").style.background="#FFF";
-                    c.querySelector(".catalog-search-product-full").style.background="#FFF";
-                } else {
-                    c.querySelector(".catalog-search-product-summary").style.background="#FDD";
-                    c.querySelector(".catalog-search-product-full").style.background="#FDD";
-                }
-            });
+            } finally {
+                resultObserver.takeRecords(); // clear our own mutations, else infinite loop
+            }
         };
         const resultObserver = new MutationObserver(updateColors);
         const modalObserver = new MutationObserver((muts, obs) => {
@@ -95,10 +102,14 @@
                 resultObserver.disconnect();
             } else {
                 // load
+                if (newResults == null && (oldResults == null || oldResults.length > 1)) {
+                    alert("highlighting script: page looks invalid, poke steven");
+                }
                 updateColors();
-                resultObserver.observe(results, {
-                    childList: true, // definitely, immediate children are results
-                    subtree: false, // going to mutate the subtree, don't watch it
+                resultObserver.observe((newResults || oldResults[0]), {
+                    attributes: false,
+                    childList: true, // new UI uses immediate children, old uses subtree
+                    subtree: true, // mutates the subtree, so make sure to .takeRecords() to avoid infinite loop
                 });
             }
         }).observe(modal, {
@@ -111,7 +122,7 @@
     let done = setInterval(() => {
         if (document.getElementById("searchResultsModal")) {
             clearInterval(done);
-            newUI();
+            real();
         }
     }, 1000);
 })();
