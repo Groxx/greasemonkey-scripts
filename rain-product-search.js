@@ -37,6 +37,7 @@
 
     // wait for page elements to load, then run.
     // the new UI delays this a fair bit, so just wait.
+    // not yet sure what to do with the old UI, working on it.
     const newUI = () => {
         let modal = document.getElementById("searchResultsModal");
         let query = modal.querySelector("input#manufacturerSearchModal"); // multiple share this ID in the page, need the one in the modal
@@ -110,7 +111,7 @@
     let done = setInterval(() => {
         if (document.getElementById("searchResultsModal")) {
             clearInterval(done);
-            real();
+            newUI();
         }
     }, 1000);
 })();
