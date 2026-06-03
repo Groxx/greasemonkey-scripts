@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         RainAdmin manufacturer search highlights
-// @namespace    http://tampermonkey.net/
+// @namespace    https://groxx.is/
 // @version      2026-06-03
 // @description  Highlights matches / mismatches when searching for products, as UPC mismatches are likely to override the scanned UPC and cause problems.
 // @author       https://github.com/Groxx
